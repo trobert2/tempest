@@ -1,0 +1,33 @@
+Content-Type: multipart/mixed; boundary="===============1598784645116016685=="
+MIME-Version: 1.0
+
+--===============1598784645116016685==
+Content-Type: text/x-cfninitdata; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="createfile"
+
+#ps1
+New-Item ~\Documents\powershell_multipart.txt -type file
+
+--===============1598784645116016685==
+Content-Type: text/x-shellscript; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="createfile.py"
+
+#!/usr/bin/env python
+import os
+home = os.path.expanduser("~")
+f = open(home+'\\Documents\\python.txt', 'w')
+f.close()
+
+--===============1598784645116016685==
+Content-Type: text/cloud-config; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="cloud-config"
+
+rem cmd
+type NUL > %HOMEPATH%\Documents\cmd.txt
+

@@ -1,0 +1,42 @@
+c = novaclient.client.Client(2, *("admin", "72a59cc788f84233", "admin","http://192.168.247.164:35357/v2.0/"),  service_type='compute', no_cache=True,insecure=True, http_log_debug=True)
+
+c2 = novaclient.client.Client(2, *("admin", "72a59cc788f84233", "8c18f6f331fc417aa04a57c326d693ab",
+"http://192.168.247.164:35357/v2.0/"),  service_type='compute', no_cache=True, insecure=True, http_log_debug=True)
+
+s = c.servers.list()[0]
+
+['HUMAN_ID', 'NAME_ATTR', 'OS-DCF:diskConfig', 'OS-EXT-AZ:availability_zone',
+'OS-EXT-SRV-ATTR:host', 'OS-EXT-SRV-ATTR:hypervisor_hostname', 'OS-EXT-SRV-ATTR:instance_name',
+'OS-EXT-STS:power_state', 'OS-EXT-STS:task_state', 'OS-EXT-STS:vm_state',
+'OS-SRV-USG:launched_at', 'OS-SRV-USG:terminated_at', '__class__', '__delattr__',
+'__dict__', '__doc__', '__eq__', '__format__', '__getattr__', '__getattribute__',
+'__hash__', '__init__', '__module__', '__new__', '__reduce__', '__reduce_ex__', '__repr__',
+'__setattr__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_add_details',
+'_info', '_loaded', 'accessIPv4', 'accessIPv6', 'add_fixed_ip', 'add_floating_ip', 'add_security_group',
+'addresses', 'backup', 'change_password', 'clear_password', 'config_drive', 'confirm_resize', 'create_image',
+'created', 'delete', 'diagnostics', 'evacuate', 'flavor', 'force_delete', 'get', 'get_console_output',
+'get_password', 'get_rdp_console', 'get_spice_console', 'get_vnc_console', 'hostId', 'human_id',
+'id', 'image', 'interface_attach', 'interface_detach', 'interface_list', 'is_loaded', 'key_name',
+'links', 'list_security_group', 'live_migrate', 'lock', 'manager', 'metadata', 'migrate', 'name',
+'networks', 'os-extended-volumes:volumes_attached', 'pause', 'progress', 'reboot', 'rebuild',
+'remove_fixed_ip', 'remove_floating_ip', 'remove_security_group', 'rescue', 'reset_network',
+ 'reset_state', 'resize', 'restore', 'resume', 'revert_resize', 'security_groups', 'set_loaded',
+ 'shelve', 'shelve_offload', 'start', 'status', 'stop', 'suspend', 'tenant_id', 'unlock', 'unpause',
+ 'unrescue', 'unshelve', 'update', 'updated', 'user_id']
+
+- get cloudbase-init must be stop so that finish
+    if stop verify that plugins execution done
+
+
+['__class__', '__delattr__', '__dict__', '__doc__', '__format__',
+'__getattribute__', '__hash__', '__init__', '__module__', '__new__', '__reduce__',
+'__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__',
+'__weakref__', 'agents', 'aggregates', 'authenticate', 'availability_zones', 'certs', 'client',
+'cloudpipe', 'dns_domains', 'dns_entries', 'fixed_ips', 'flavor_access', 'flavors', 'floating_ip_pools',
+'floating_ips', 'floating_ips_bulk', 'fping', 'get_timings', 'hosts', 'hypervisors', 'images', 'keypairs',
+'limits', 'networks', 'os_cache', 'projectid', 'quota_classes', 'quotas', 'reset_timings', 'security_group_rules',
+'security_groups', 'servers', 'services', 'set_management_url', 'tenant_id', 'usage', 'virtual_interfaces',
+'volume_snapshots', 'volume_types', 'volumes']
+
+
+['__abstractmethods__', '__class__', '__delattr__', '__dict__', '__doc__', '__format__', '__getattribute__', '__hash__', '__init__', '__metaclass__', '__module__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_abc_cache', '_abc_negative_cache', '_abc_negative_cache_version', '_abc_registry', '_action', '_boot', '_create', '_delete', '_get', '_hooks_map', '_list', '_parse_block_device_mapping', '_update', 'add_fixed_ip', 'add_floating_ip', 'add_hook', 'add_security_group', 'api', 'backup', 'change_password', 'clear_password', 'completion_cache', 'confirm_resize', 'create', 'create_image', 'delete', 'delete_meta', 'diagnostics', 'evacuate', 'find', 'findall', 'force_delete', 'get', 'get_console_output', 'get_password', 'get_spice_console', 'get_vnc_console', 'interface_attach', 'interface_detach', 'interface_list', 'list', 'list_security_group', 'live_migrate', 'lock', 'migrate', 'pause', 'reboot', 'rebuild', 'remove_fixed_ip', 'remove_floating_ip', 'remove_security_group', 'rescue', 'reset_network', 'reset_state', 'resize', 'resource_class', 'restore', 'resume', 'revert_resize', 'run_hooks', 'set_meta', 'start', 'stop', 'suspend', 'unlock', 'unpause', 'unrescue', 'update', 'write_to_completion_cache']

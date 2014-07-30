@@ -32,6 +32,7 @@ import neutronclient.v2_0.client
 import novaclient.client
 from novaclient import exceptions as nova_exceptions
 import swiftclient
+import time
 
 from tempest.api.network import common as net_common
 from tempest.common import isolated_creds
@@ -77,10 +78,10 @@ class OfficialClientManager(tempest.manager.Manager):
         self.volume_client = self._get_volume_client(username,
                                                      password,
                                                      tenant_name)
-        self.object_storage_client = self._get_object_storage_client(
-            username,
-            password,
-            tenant_name)
+        # self.object_storage_client = self._get_object_storage_client(
+        #     username,
+        #     password,
+        #     tenant_name)
         self.orchestration_client = self._get_orchestration_client(
             username,
             password,
@@ -238,7 +239,7 @@ class OfficialClientTest(tempest.test.BaseTestCase):
         cls.identity_client = cls.manager.identity_client
         cls.network_client = cls.manager.network_client
         cls.volume_client = cls.manager.volume_client
-        cls.object_storage_client = cls.manager.object_storage_client
+        # cls.object_storage_client = cls.manager.object_storage_client
         cls.orchestration_client = cls.manager.orchestration_client
         cls.resource_keys = {}
         cls.os_resources = []
@@ -410,6 +411,20 @@ class OfficialClientTest(tempest.test.BaseTestCase):
                 'from_port': -1,
                 'to_port': -1,
                 'cidr': '0.0.0.0/0',
+            },
+            {
+                # http winrm
+                'ip_protocol': 'tcp',
+                'from_port': 5985,
+                'to_port': 5985,
+                'cidr': '0.0.0.0/0',
+            },
+            {
+                # https winrm
+                'ip_protocol': 'tcp',
+                'from_port': 5986,
+                'to_port': 5986,
+                'cidr': '0.0.0.0/0',
             }
         ]
         for ruleset in rulesets:
@@ -432,7 +447,7 @@ class OfficialClientTest(tempest.test.BaseTestCase):
         server = client.servers.create(name, image, flavor, **create_kwargs)
         self.assertEqual(server.name, name)
         self.set_resource(name, server)
-        self.status_timeout(client.servers, server.id, 'ACTIVE')
+        self.status_timeout(client.servers, server.id.replace(" ", ""), 'ACTIVE')
         # The instance retrieved on creation is missing network
         # details, necessitating retrieval after it becomes active to
         # ensure correct details.
@@ -589,6 +604,7 @@ class NetworkScenarioTest(OfficialClientTest):
                     network_id=network.id,
                     tenant_id=network.tenant_id,
                     cidr=str(subnet_cidr),
+                    dns_nameservers=['8.8.8.8']
                 ),
             )
             try:
