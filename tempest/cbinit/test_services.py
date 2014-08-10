@@ -92,8 +92,12 @@ class TestServices(manager.NetworkScenarioTest):
         LOG.info("installing cbinit: "+str(std_out))
         LOG.info("installing cbinit: "+str(std_err))
 
-        #check cbinit complete
         svr = self.compute_client.servers.list()[0]
+        self.status_timeout(self.compute_client.servers, svr.id, 'SHUTOFF')
+        svr.start()
+        self.status_timeout(self.compute_client.servers, svr.id, 'ACTIVE')
+
+        #check cbinit complete
         key = 'HKLM:SOFTWARE\\Wow6432Node\\Cloudbase` Solutions\\Cloudbase-init\\' + svr.id + '\\Plugins'
         wait_cmd = 'powershell (Get-Item %s).ValueCount' % key
 
@@ -228,7 +232,7 @@ class TestServices(manager.NetworkScenarioTest):
                     ip_address = floating_ip.floating_ip_address
                     self._first_login(ip_address)
                     self._test_services(ip_address)
-                    self._test_service_keys(ip_address)
+                    # self._test_service_keys(ip_address)
                     self._test_disk_expanded(ip_address)
                     self._test_username_created(ip_address)
                     self._test_hostname_set(ip_address)
@@ -262,13 +266,14 @@ class TestServices(manager.NetworkScenarioTest):
         return password
         os.remove(temp_key_file.name)
 
-    def _test_service_keys(self, pub_ip):
-        svr = self.compute_client.servers.list()[0]
-        key = 'HKLM:SOFTWARE\\Wow6432Node\\Cloudbase` Solutions\\Cloudbase-init\\' + svr.id + '\\Plugins'
-        cmd = 'powershell (Get-Item %s).ValueCount' % key
-        wsmancmd = WinRemoteClient(pub_ip, self.default_ci_username)
-        std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
-        self.assertEqual(int(std_out), 11)
+    # def _test_service_keys(self, pub_ip):
+    #     svr = self.compute_client.servers.list()[0]
+    #     key = 'HKLM:SOFTWARE\\Wow6432Node\\Cloudbase` Solutions\\Cloudbase-init\\' + svr.id + '\\Plugins'
+    #     cmd = 'powershell (Get-Item %s).ValueCount' % key
+    #     wsmancmd = WinRemoteClient(pub_ip, self.default_ci_username,
+    #                                self.default_ci_password)
+    #     std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
+    #     self.assertEqual(int(std_out), 11)
 
     def _test_services(self, pub_ip):
         username = 'Administrator'
