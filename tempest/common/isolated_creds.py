@@ -242,6 +242,7 @@ class IsolatedCreds(cred_provider.CredentialProvider):
                                'network_id': network_id, 'ip_version': 4}}
             if self.network_resources:
                 body['enable_dhcp'] = self.network_resources['dhcp']
+                body['dns_nameservers'] = CONF.network.dns_servers
         base_cidr = netaddr.IPNetwork(CONF.network.tenant_network_cidr)
         mask_bits = CONF.network.tenant_network_mask_bits
         for subnet_cidr in base_cidr.subnet(mask_bits):
@@ -254,6 +255,7 @@ class IsolatedCreds(cred_provider.CredentialProvider):
                                 name=subnet_name,
                                 tenant_id=tenant_id,
                                 enable_dhcp=self.network_resources['dhcp'],
+                                dns_nameservers=CONF.network.dns_servers,
                                 ip_version=4)
                     else:
                         resp, resp_body = self.network_admin_client.\
@@ -261,6 +263,7 @@ class IsolatedCreds(cred_provider.CredentialProvider):
                                           cidr=str(subnet_cidr),
                                           name=subnet_name,
                                           tenant_id=tenant_id,
+                                          dns_nameservers=CONF.network.dns_servers,
                                           ip_version=4)
                 else:
                     body['subnet']['cidr'] = str(subnet_cidr)
