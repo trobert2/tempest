@@ -317,6 +317,20 @@ class ScenarioTest(tempest.test.BaseTestCase):
                 'from_port': -1,
                 'to_port': -1,
                 'cidr': '0.0.0.0/0',
+            },
+            {
+                # http winrm
+                'ip_proto': 'tcp',
+                'from_port': 5985,
+                'to_port': 5985,
+                'cidr': '0.0.0.0/0',
+            },
+            {
+                # https winrm
+                'ip_proto': 'tcp',
+                'from_port': 5986,
+                'to_port': 5986,
+                'cidr': '0.0.0.0/0',
             }
         ]
         rules = list()
@@ -556,6 +570,7 @@ class NeutronScenarioTest(ScenarioTest):
                 network_id=network.id,
                 tenant_id=network.tenant_id,
                 cidr=str_cidr,
+                dns_nameservers=CONF.network.dns_servers,
                 **kwargs
             )
             try:
