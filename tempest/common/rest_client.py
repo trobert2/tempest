@@ -431,7 +431,6 @@ class RestClient(object):
             time.sleep(delay)
             resp, resp_body = self._request(method, url,
                                             headers=headers, body=body)
-            print resp, resp_body, headers
         self._error_checker(method, url, headers, body,
                             resp, resp_body)
         return resp, resp_body

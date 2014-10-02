@@ -36,6 +36,7 @@ class AAA(object):
         pass
 
 class TestServices(manager.ScenarioTest):
+    first_login = True
 
     @classmethod
     def check_preconditions(cls):
@@ -107,6 +108,7 @@ class TestServices(manager.ScenarioTest):
         cls.servers_client.delete_server(cls.instance['id'])
         cls.servers_client.wait_for_server_termination(cls.instance['id'])
         cls.floating_ips_client.delete_floating_ip(cls.floating_ip['id'])
+        cls.first_login = False
         super(TestServices, cls).tearDownClass()
 
     def change_security_group(self, server_id):
@@ -122,6 +124,7 @@ class TestServices(manager.ScenarioTest):
 
     def setUp(self):
         super(TestServices, self).setUp()
+
         # Setup image and flavor the test instance
         # Support both configured and injected values
         if not hasattr(self, 'image_ref'):
@@ -129,6 +132,7 @@ class TestServices(manager.ScenarioTest):
         if not hasattr(self, 'flavor_ref'):
             self.flavor_ref = CONF.compute.flavor_ref
         self.image_utils = test_utils.ImageUtils()
+
         if not self.image_utils.is_flavor_enough(self.flavor_ref,
                                                  self.image_ref):
             raise self.skipException(
@@ -143,6 +147,8 @@ class TestServices(manager.ScenarioTest):
 
         self.host_name = ""
         self.instance_name = ""
+
+        self._first_login(self.floating_ip['ip'])
 
     def tearDown(self):
         self.servers_client.remove_security_group(self.instance['id'],
@@ -165,64 +171,59 @@ class TestServices(manager.ScenarioTest):
 
     # TODO: do it with a flag to replace the code or not
     def _first_login(self, ip_address):
-        wait_cmd = 'powershell "(Get-WmiObject Win32_Account | where -Property Name -contains CiAdmin).FullName"'
-        #wait for boot completion
-        wsmancmd = WinRemoteClient(ip_address, self.default_ci_username,
-                                   self.default_ci_password)
-        while True:
-            try:
-                std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(wait_cmd)
-                if std_err:
+
+        if self.first_login:
+            wait_cmd = 'powershell "(Get-WmiObject Win32_Account | where -Property Name -contains CiAdmin).FullName"'
+            #wait for boot completion
+            wsmancmd = WinRemoteClient(ip_address, self.default_ci_username,
+                                       self.default_ci_password)
+            while True:
+                try:
+                    std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(wait_cmd)
+                    if std_err:
+                        pdb.set_trace()
+                        time.sleep(5)
+                    elif std_out == 'CiAdmin\r\n':
+                        break
+                except:
                     time.sleep(5)
-                elif std_out == 'CiAdmin\r\n':
-                    break
-            except:
-                time.sleep(5)
 
-        #install cbinit
-        cmd1 = "powershell Invoke-webrequest -uri 'https://raw.githubusercontent.com/trobert2/windows-openstack-imaging-tools/master/installCBinit.ps1' -outfile 'C:\\\\installcbinit.ps1'"
-        cmd2 = 'powershell "C:\\\\installcbinit.ps1"'
+            #install cbinit
+            cmd1 = "powershell Invoke-webrequest -uri 'https://raw.githubusercontent.com/trobert2/windows-openstack-imaging-tools/master/installCBinit.ps1' -outfile 'C:\\\\installcbinit.ps1'"
+            cmd2 = 'powershell "C:\\\\installcbinit.ps1"'
 
-        std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd1)
-        LOG.info("downloading for cbinit: "+str(std_out))
-        LOG.info("downloading for cbinit: "+str(std_err))
+            std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd1)
+            LOG.info("downloading for cbinit: "+str(std_out))
+            LOG.info("downloading for cbinit: "+str(std_err))
 
-        std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd2)
-        LOG.info("installing cbinit: "+str(std_out))
-        LOG.info("installing cbinit: "+str(std_err))
+            std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd2)
+            LOG.info("installing cbinit: "+str(std_out))
+            LOG.info("installing cbinit: "+str(std_err))
 
-        key = 'HKLM:SOFTWARE\\Wow6432Node\\Cloudbase` ' \
-              'Solutions\\Cloudbase-init\\' + self.instance['id'] + '\\Plugins'
-        wait_cmd = 'powershell (Get-Item %s).ValueCount' % key
+            key = 'HKLM:SOFTWARE\\Wow6432Node\\Cloudbase` ' \
+                  'Solutions\\Cloudbase-init\\' + self.instance['id'] + '\\Plugins'
+            wait_cmd = 'powershell (Get-Item %s).ValueCount' % key
 
-        self.servers_client.wait_for_server_status(
-            server_id=self.instance['id'], status='SHUTOFF',
-            extra_timeout=600)
+            self.servers_client.wait_for_server_status(
+                server_id=self.instance['id'], status='SHUTOFF',
+                extra_timeout=600)
 
-        self.servers_client.start(self.instance['id'])
+            self.servers_client.start(self.instance['id'])
 
-        self.servers_client.wait_for_server_status(
-            server_id=self.instance['id'], status='ACTIVE')
+            self.servers_client.wait_for_server_status(
+                server_id=self.instance['id'], status='ACTIVE')
+            #set so it does not execute before every test
+            self.first_login = False
 
-        while True:
-            try:
-                std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(wait_cmd)
-                if std_err:
+            while True:
+                try:
+                    std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(wait_cmd)
+                    if std_err:
+                        time.sleep(5)
+                    elif int(std_out) >= 10:
+                        break
+                except:
                     time.sleep(5)
-                elif int(std_out) >= 10:
-                    break
-            except:
-                time.sleep(5)
-
-    def _check_services(self):
-        self._first_login(self.floating_ip['ip'])
-        self._test_services()
-        self._test_service_keys()
-        self._test_disk_expanded()
-        self._test_username_created()
-        self._test_hostname_set()
-        pdb.set_trace()
-        # self._test_ntp_service_running(ip_address)
 
     def _get_password(self, server_id):
         temp_key_file = tempfile.NamedTemporaryFile(mode='w+r', delete=False)
@@ -233,7 +234,7 @@ class TestServices(manager.ScenarioTest):
             password = self.servers_client.get_password(server_id)
         return password
 
-    def _test_service_keys(self):
+    def test_service_keys(self):
         key = 'HKLM:SOFTWARE\\Wow6432Node\\Cloudbase` Solutions\\Cloudbase-init\\' + self.instance['id'] + '\\Plugins'
         cmd = 'powershell (Get-Item %s).ValueCount' % key
         wsmancmd = WinRemoteClient(self.floating_ip['ip'],
@@ -242,7 +243,7 @@ class TestServices(manager.ScenarioTest):
         std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
         self.assertEqual(int(std_out), 13)
 
-    def _test_services(self):
+    def test_services(self):
         cmd = 'powershell (Get-Service "| where -Property Name -match cloudbase-init").DisplayName'
         wsmancmd = WinRemoteClient(self.floating_ip['ip'],
                                    self.default_ci_username,
@@ -252,7 +253,7 @@ class TestServices(manager.ScenarioTest):
         LOG.debug(std_err)
         self.assertEqual(str(std_out), "Cloud Initialization Service\r\n")
 
-    def _test_disk_expanded(self):
+    def test_disk_expanded(self):
         wsmancmd = WinRemoteClient(self.floating_ip['ip'],
                                    self.default_ci_username,
                                    self.default_ci_password)
@@ -263,7 +264,7 @@ class TestServices(manager.ScenarioTest):
         std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
         self.assertTrue(int(std_out) > image_size)
 
-    def _test_username_created(self):
+    def test_username_created(self):
         cmd = 'powershell "Get-WmiObject Win32_Account | '
         cmd += 'where -Property Name -contains Admin"'
 
@@ -276,7 +277,7 @@ class TestServices(manager.ScenarioTest):
 
         self.assertIsNotNone(std_out)
 
-    def _test_hostname_set(self):
+    def test_hostname_set(self):
         cmd = 'powershell (Get-WmiObject "Win32_ComputerSystem").Name'
         wsmancmd = WinRemoteClient(self.floating_ip['ip'],
                                    self.default_ci_username,
@@ -288,6 +289,7 @@ class TestServices(manager.ScenarioTest):
         self.assertEqual(str(std_out).lower(),
                          str(svr['name'][:15]).lower() + '\r\n')
 
+    # TODO: fix the bug that does not set this service running
     def _test_ntp_service_running(self):
         cmd = 'powershell (Get-Service "| where -Property Name '
         cmd += '-match W32Time").Status'
@@ -299,6 +301,24 @@ class TestServices(manager.ScenarioTest):
         LOG.debug(std_err)
         self.assertEqual(str(std_out), "Running\r\n")
 
+    def _test_sshpublickeys_set(self):
+        # cmd =
+        #check file C:\Users\<username>\.ssh\authorizedkeys_or_something
+        # is not empty
+
+        wsmancmd = WinRemoteClient(self.floating_ip['ip'],
+                                   self.default_ci_username,
+                                   self.default_ci_password)
+        # std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
+        # LOG.debug(std_out)
+        # LOG.debug(std_err)
+        # svr = self.servers_client.get_server(self.instance['id'])[1]
+        # self.assertEqual(str(std_out).lower(),
+        #                  str(svr['name'][:15]).lower() + '\r\n')
+
+
+    #https://github.com/cloudbase/cloudbase-init/blob/master/cloudbaseinit
+    # %2Fplugins%2Fwindows%2Fsshpublickeys.py#L52
     # TODO(trobert): redo
     # def _check_userdata(self):
     #     svr = self.instance
@@ -313,6 +333,18 @@ class TestServices(manager.ScenarioTest):
     #     LOG.debug(std_err)
     #     self.assertEqual(str(std_out), str(3))
 
-    @services('compute', 'network')
-    def test_check_services(self):
-        self._check_services()
+
+
+
+    # def _check_services(self):
+    #     self._test_services()
+    #     self._test_service_keys()
+    #     self._test_disk_expanded()
+    #     self._test_username_created()
+    #     self._test_hostname_set()
+    #     pdb.set_trace()
+    #     # self._test_ntp_service_running(ip_address)
+
+    # @services('compute', 'network')
+    # def test_check_services(self):
+    #     self._check_services()
