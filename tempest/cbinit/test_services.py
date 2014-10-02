@@ -31,22 +31,9 @@ LOG = logging.getLogger("cbinit")
 
 CONF = config.CONF
 
-class AAA(object):
-    def func(self):
-        pass
 
 class TestServices(manager.ScenarioTest):
     first_login = True
-
-    @classmethod
-    def check_preconditions(cls):
-        # super(TestServices, cls).check_preconditions()
-        cfg = CONF.network
-        if not (cfg.tenant_networks_reachable or cfg.public_network_id):
-            msg = ('Either tenant_networks_reachable must be "true", or '
-                   'public_network_id must be defined.')
-            cls.enabled = False
-            raise cls.skipException(msg)
 
     @classmethod
     def create_test_server(cls, **kwargs):
@@ -89,9 +76,10 @@ class TestServices(manager.ScenarioTest):
 
     @classmethod
     def setUpClass(cls):
+        pdb.set_trace()
         super(TestServices, cls).setUpClass()
+        pdb.set_trace()
 
-        cls.check_preconditions()
         cls.keypairs = {}
         cls.subnets = []
         cls.routers = []
@@ -101,6 +89,7 @@ class TestServices(manager.ScenarioTest):
         cls.default_ci_password = 'Passw0rd'
 
         cls.create_test_server(wait_until='ACTIVE')
+        pdb.set_trace()
         cls._assign_floating_ip()
 
     @classmethod
@@ -143,12 +132,14 @@ class TestServices(manager.ScenarioTest):
         self.keypair = self.create_keypair()
         self.change_security_group(self.instance['id'])
 
-        self.get_private_network()
+        self.private_network = self.get_private_network()
 
         self.host_name = ""
         self.instance_name = ""
-
-        self._first_login(self.floating_ip['ip'])
+        self.remote_client = WinRemoteClient(self.floating_ip['ip'],
+                                             self.default_ci_username,
+                                             self.default_ci_password)
+        self._first_login(self.remote_client)
 
     def tearDown(self):
         self.servers_client.remove_security_group(self.instance['id'],
@@ -159,7 +150,7 @@ class TestServices(manager.ScenarioTest):
         networks = self.networks_client.list_networks()[1]
         for network in networks:
             if network['label'] == 'private_cbinit':
-                self.private_network = network
+                return network
 
     @classmethod
     def _assign_floating_ip(self):
@@ -170,13 +161,13 @@ class TestServices(manager.ScenarioTest):
             self.floating_ip['ip'], self.instance['id'])
 
     # TODO: do it with a flag to replace the code or not
-    def _first_login(self, ip_address):
+    def _first_login(self, remote_client):
 
         if self.first_login:
             wait_cmd = 'powershell "(Get-WmiObject Win32_Account | where -Property Name -contains CiAdmin).FullName"'
             #wait for boot completion
-            wsmancmd = WinRemoteClient(ip_address, self.default_ci_username,
-                                       self.default_ci_password)
+            wsmancmd = remote_client
+
             while True:
                 try:
                     std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(wait_cmd)
@@ -193,12 +184,12 @@ class TestServices(manager.ScenarioTest):
             cmd2 = 'powershell "C:\\\\installcbinit.ps1"'
 
             std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd1)
-            LOG.info("downloading for cbinit: "+str(std_out))
-            LOG.info("downloading for cbinit: "+str(std_err))
+            LOG.info("downloading for cbinit: " + str(std_out))
+            LOG.info("downloading for cbinit: " + str(std_err))
 
             std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd2)
-            LOG.info("installing cbinit: "+str(std_out))
-            LOG.info("installing cbinit: "+str(std_err))
+            LOG.info("installing cbinit: " + str(std_out))
+            LOG.info("installing cbinit: " + str(std_err))
 
             key = 'HKLM:SOFTWARE\\Wow6432Node\\Cloudbase` ' \
                   'Solutions\\Cloudbase-init\\' + self.instance['id'] + '\\Plugins'
@@ -237,41 +228,31 @@ class TestServices(manager.ScenarioTest):
     def test_service_keys(self):
         key = 'HKLM:SOFTWARE\\Wow6432Node\\Cloudbase` Solutions\\Cloudbase-init\\' + self.instance['id'] + '\\Plugins'
         cmd = 'powershell (Get-Item %s).ValueCount' % key
-        wsmancmd = WinRemoteClient(self.floating_ip['ip'],
-                                   self.default_ci_username,
-                                   self.default_ci_password)
-        std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
+        std_out, std_err, exit_code = self.remote_client.run_wsman_cmd(cmd)
         self.assertEqual(int(std_out), 13)
 
     def test_services(self):
         cmd = 'powershell (Get-Service "| where -Property Name -match cloudbase-init").DisplayName'
-        wsmancmd = WinRemoteClient(self.floating_ip['ip'],
-                                   self.default_ci_username,
-                                   self.default_ci_password)
-        std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
+
+        std_out, std_err, exit_code = self.remote_client.run_wsman_cmd(cmd)
         LOG.debug(std_out)
         LOG.debug(std_err)
         self.assertEqual(str(std_out), "Cloud Initialization Service\r\n")
 
     def test_disk_expanded(self):
-        wsmancmd = WinRemoteClient(self.floating_ip['ip'],
-                                   self.default_ci_username,
-                                   self.default_ci_password)
         # TODO: get the right image, not the first one
         image = self.images_client.get_image(CONF.compute.image_ref)
         image_size = image[1]['OS-EXT-IMG-SIZE:size']
         cmd = 'powershell (Get-WmiObject "win32_logicaldisk | where -Property DeviceID -Match C:").Size'
-        std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
+
+        std_out, std_err, exit_code = self.remote_client.run_wsman_cmd(cmd)
         self.assertTrue(int(std_out) > image_size)
 
     def test_username_created(self):
         cmd = 'powershell "Get-WmiObject Win32_Account | '
         cmd += 'where -Property Name -contains Admin"'
 
-        wsmancmd = WinRemoteClient(self.floating_ip['ip'],
-                                   self.default_ci_username,
-                                   self.default_ci_password)
-        std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
+        std_out, std_err, exit_code = self.remote_client.run_wsman_cmd(cmd)
         LOG.debug(std_out)
         LOG.debug(std_err)
 
@@ -279,10 +260,8 @@ class TestServices(manager.ScenarioTest):
 
     def test_hostname_set(self):
         cmd = 'powershell (Get-WmiObject "Win32_ComputerSystem").Name'
-        wsmancmd = WinRemoteClient(self.floating_ip['ip'],
-                                   self.default_ci_username,
-                                   self.default_ci_password)
-        std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
+
+        std_out, std_err, exit_code = self.remote_client.run_wsman_cmd(cmd)
         LOG.debug(std_out)
         LOG.debug(std_err)
         svr = self.servers_client.get_server(self.instance['id'])[1]
@@ -293,23 +272,19 @@ class TestServices(manager.ScenarioTest):
     def _test_ntp_service_running(self):
         cmd = 'powershell (Get-Service "| where -Property Name '
         cmd += '-match W32Time").Status'
-        wsmancmd = WinRemoteClient(self.floating_ip['ip'],
-                                   self.default_ci_username,
-                                   self.default_ci_password)
-        std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
+
+        std_out, std_err, exit_code = self.remote_client.run_wsman_cmd(cmd)
         LOG.debug(std_out)
         LOG.debug(std_err)
         self.assertEqual(str(std_out), "Running\r\n")
 
     def _test_sshpublickeys_set(self):
+        pass
         # cmd =
         #check file C:\Users\<username>\.ssh\authorizedkeys_or_something
         # is not empty
 
-        wsmancmd = WinRemoteClient(self.floating_ip['ip'],
-                                   self.default_ci_username,
-                                   self.default_ci_password)
-        # std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
+        # std_out, std_err, exit_code = self.remote_client.run_wsman_cmd(cmd)
         # LOG.debug(std_out)
         # LOG.debug(std_err)
         # svr = self.servers_client.get_server(self.instance['id'])[1]
@@ -325,9 +300,6 @@ class TestServices(manager.ScenarioTest):
     #     cmd = 'powershell (Get-Item "~\\Documents\\*.txt").length'
     #
     #     ip_address = floating_ip.floating_ip_address
-    #     wsmancmd = WinRemoteClient(ip_address,
-    #                                self.default_ci_username,
-    #                                self.default_ci_password)
     #     std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
     #     LOG.debug(str(std_out))
     #     LOG.debug(std_err)
