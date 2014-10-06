@@ -76,40 +76,47 @@ class TestServices(manager.ScenarioTest):
 
     @classmethod
     def setUpClass(cls):
-        pdb.set_trace()
         super(TestServices, cls).setUpClass()
-        pdb.set_trace()
-
         cls.keypairs = {}
+        cls.security_groups = []
         cls.subnets = []
         cls.routers = []
         cls.servers = []
         cls.floating_ips = {}
+
         cls.default_ci_username = 'CiAdmin'
         cls.default_ci_password = 'Passw0rd'
 
         cls.create_test_server(wait_until='ACTIVE')
-        pdb.set_trace()
         cls._assign_floating_ip()
 
     @classmethod
     def tearDownClass(cls):
+        # try:
+        #     cls.servers_client.remove_security_group(
+        #         cls.instance['id'], cls.security_group['name'])
+        # except Exception as ex:
+        #     LOG.info(ex)
+
         cls.servers_client.delete_server(cls.instance['id'])
         cls.servers_client.wait_for_server_termination(cls.instance['id'])
         cls.floating_ips_client.delete_floating_ip(cls.floating_ip['id'])
-        cls.first_login = False
+
         super(TestServices, cls).tearDownClass()
 
     def change_security_group(self, server_id):
-        self.security_group = self._create_security_group()
+        security_group = self._create_security_group()
+        self.security_groups.append(security_group)
 
         for sec_group in self.instance['security_groups']:
-            self.servers_client.remove_security_group(server_id,
-                                                      sec_group['name'])
-
+            try:
+                self.servers_client.remove_security_group(server_id,
+                                                          sec_group['name'])
+            except Exception as ex:
+                LOG.info(ex)
 
         self.servers_client.add_security_group(server_id,
-                                               self.security_group['name'])
+                                               security_group['name'])
 
     def setUp(self):
         super(TestServices, self).setUp()
@@ -142,8 +149,14 @@ class TestServices(manager.ScenarioTest):
         self._first_login(self.remote_client)
 
     def tearDown(self):
-        self.servers_client.remove_security_group(self.instance['id'],
-                                                  self.security_group['name'])
+        for sec_group in self.security_groups:
+            print sec_group
+            try:
+                self.servers_client.remove_security_group(
+                    self.instance['id'], sec_group['name'])
+            except Exception as ex:
+                LOG.info(ex)
+
         super(TestServices, self).tearDown()
 
     def get_private_network(self):
@@ -162,8 +175,9 @@ class TestServices(manager.ScenarioTest):
 
     # TODO: do it with a flag to replace the code or not
     def _first_login(self, remote_client):
+        if TestServices.first_login:
+            TestServices.first_login = False
 
-        if self.first_login:
             wait_cmd = 'powershell "(Get-WmiObject Win32_Account | where -Property Name -contains CiAdmin).FullName"'
             #wait for boot completion
             wsmancmd = remote_client
@@ -172,7 +186,6 @@ class TestServices(manager.ScenarioTest):
                 try:
                     std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(wait_cmd)
                     if std_err:
-                        pdb.set_trace()
                         time.sleep(5)
                     elif std_out == 'CiAdmin\r\n':
                         break
@@ -204,7 +217,6 @@ class TestServices(manager.ScenarioTest):
             self.servers_client.wait_for_server_status(
                 server_id=self.instance['id'], status='ACTIVE')
             #set so it does not execute before every test
-            self.first_login = False
 
             while True:
                 try:
@@ -231,7 +243,7 @@ class TestServices(manager.ScenarioTest):
         std_out, std_err, exit_code = self.remote_client.run_wsman_cmd(cmd)
         self.assertEqual(int(std_out), 13)
 
-    def test_services(self):
+    def test_service(self):
         cmd = 'powershell (Get-Service "| where -Property Name -match cloudbase-init").DisplayName'
 
         std_out, std_err, exit_code = self.remote_client.run_wsman_cmd(cmd)
