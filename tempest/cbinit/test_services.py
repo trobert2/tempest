@@ -16,15 +16,16 @@
 #    under the License.
 
 from tempest.common.utils import data_utils
-from tempest.common import debug
 from tempest import config
 from tempest.openstack.common import log as logging
 from tempest.scenario import manager
 from tempest.scenario import utils as test_utils
-from tempest.test import services
 from tempest.common.utils.windows.remote_client import WinRemoteClient
+
+import base64
+import subprocess
+import os
 import time
-import tempfile
 import pdb
 
 LOG = logging.getLogger("cbinit")
@@ -35,6 +36,7 @@ CONF = config.CONF
 class TestServices(manager.ScenarioTest):
     first_login = True
 
+    #TODO:rtingirica add image_ref so it can be run for different images
     @classmethod
     def create_test_server(cls, **kwargs):
         """Wrapper utility that returns a test server."""
@@ -77,17 +79,24 @@ class TestServices(manager.ScenarioTest):
     @classmethod
     def setUpClass(cls):
         super(TestServices, cls).setUpClass()
-        cls.keypairs = {}
+
         cls.security_groups = []
         cls.subnets = []
-        cls.routers = []
         cls.servers = []
+        cls.routers = []
         cls.floating_ips = {}
 
         cls.default_ci_username = 'CiAdmin'
         cls.default_ci_password = 'Passw0rd'
+        cls.created_user = 'Admin'
 
-        cls.create_test_server(wait_until='ACTIVE')
+        (resp, cls.keypair) = cls.keypairs_client.create_keypair(
+            cls.__name__ + "-key")
+        with open(CONF.compute.path_to_private_key, 'w') as h:
+            h.write(cls.keypair['private_key'])
+
+        cls.create_test_server(wait_until='ACTIVE',
+                               key_name=cls.keypair['name'])
         cls._assign_floating_ip()
 
     @classmethod
@@ -101,6 +110,9 @@ class TestServices(manager.ScenarioTest):
         cls.servers_client.delete_server(cls.instance['id'])
         cls.servers_client.wait_for_server_termination(cls.instance['id'])
         cls.floating_ips_client.delete_floating_ip(cls.floating_ip['id'])
+        cls.keypairs_client.delete_keypair(cls.keypair['name'])
+
+        os.remove(CONF.compute.path_to_private_key)
 
         super(TestServices, cls).tearDownClass()
 
@@ -136,7 +148,6 @@ class TestServices(manager.ScenarioTest):
                     image=self.image_ref, flavor=self.flavor_ref
                 )
             )
-        self.keypair = self.create_keypair()
         self.change_security_group(self.instance['id'])
 
         self.private_network = self.get_private_network()
@@ -159,12 +170,6 @@ class TestServices(manager.ScenarioTest):
 
         super(TestServices, self).tearDown()
 
-    def get_private_network(self):
-        networks = self.networks_client.list_networks()[1]
-        for network in networks:
-            if network['label'] == 'private_cbinit':
-                return network
-
     @classmethod
     def _assign_floating_ip(self):
         # Obtain a floating IP
@@ -172,6 +177,39 @@ class TestServices(manager.ScenarioTest):
 
         self.floating_ips_client.associate_floating_ip_to_server(
             self.floating_ip['ip'], self.instance['id'])
+
+    def _decrypt_password(self, private_key, password):
+        """Base64 decodes password and unencrypts it with private key.
+
+        Requires openssl binary available in the path.
+        """
+        unencoded = base64.b64decode(password)
+        cmd = ['openssl', 'rsautl', '-decrypt', '-inkey', private_key]
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        out, err = proc.communicate(unencoded)
+        proc.stdin.close()
+        if proc.returncode:
+            raise Exception(err)
+        return out
+
+    def get_private_network(self):
+        networks = self.networks_client.list_networks()[1]
+        for network in networks:
+            if network['label'] == 'private_cbinit':
+                return network
+
+    def _get_password(self):
+        enc_password = {}
+        while enc_password == {}:
+            (resp, enc_password) = self.servers_client.get_password(
+                self.instance['id'])
+        password = self._decrypt_password(
+            private_key=CONF.compute.path_to_private_key,
+            password=enc_password['password'])
+
+        return password
 
     # TODO: do it with a flag to replace the code or not
     def _first_login(self, remote_client):
@@ -228,15 +266,6 @@ class TestServices(manager.ScenarioTest):
                 except:
                     time.sleep(5)
 
-    def _get_password(self, server_id):
-        temp_key_file = tempfile.NamedTemporaryFile(mode='w+r', delete=False)
-        temp_key_file.write(self.keypairs[self.tenant_id].private_key)
-        temp_key_file.close()
-        password = ''
-        while password == '':
-            password = self.servers_client.get_password(server_id)
-        return password
-
     def test_service_keys(self):
         key = 'HKLM:SOFTWARE\\Wow6432Node\\Cloudbase` Solutions\\Cloudbase-init\\' + self.instance['id'] + '\\Plugins'
         cmd = 'powershell (Get-Item %s).ValueCount' % key
@@ -262,7 +291,7 @@ class TestServices(manager.ScenarioTest):
 
     def test_username_created(self):
         cmd = 'powershell "Get-WmiObject Win32_Account | '
-        cmd += 'where -Property Name -contains Admin"'
+        cmd += 'where -Property Name -contains %s"' % self.created_user
 
         std_out, std_err, exit_code = self.remote_client.run_wsman_cmd(cmd)
         LOG.debug(std_out)
@@ -290,24 +319,40 @@ class TestServices(manager.ScenarioTest):
         LOG.debug(std_err)
         self.assertEqual(str(std_out), "Running\r\n")
 
-    def _test_sshpublickeys_set(self):
-        pass
-        # cmd =
-        #check file C:\Users\<username>\.ssh\authorizedkeys_or_something
-        # is not empty
+    def test_password_set(self):
+        password = self._get_password()
+        folder_name = data_utils.rand_name("folder")
 
-        # std_out, std_err, exit_code = self.remote_client.run_wsman_cmd(cmd)
-        # LOG.debug(std_out)
-        # LOG.debug(std_err)
-        # svr = self.servers_client.get_server(self.instance['id'])[1]
-        # self.assertEqual(str(std_out).lower(),
-        #                  str(svr['name'][:15]).lower() + '\r\n')
+        cmd = 'mkdir C:\\%s' % folder_name
+        cmd2 = 'powershell "get-childitem c:\ | select-string %s"' % folder_name
+        remote_client = WinRemoteClient(self.floating_ip['ip'],
+                                        self.created_user,
+                                        password)
 
+        std_out, std_err, exit_code = remote_client.run_wsman_cmd(cmd)
+        std_out, std_err, exit_code = remote_client.run_wsman_cmd(cmd2)
 
-    #https://github.com/cloudbase/cloudbase-init/blob/master/cloudbaseinit
-    # %2Fplugins%2Fwindows%2Fsshpublickeys.py#L52
+        self.assertEqual(str(std_out.strip("\r\n")), folder_name)
+
+    def test_sshpublickeys_set(self):
+        password = self._get_password()
+
+        cmd = 'echo %cd%'
+        remote_client = WinRemoteClient(self.floating_ip['ip'],
+                                        self.created_user,
+                                        password)
+        std_out, std_err, exit_code = remote_client.run_wsman_cmd(cmd)
+        LOG.info(std_out)
+        path = std_out.strip("\r\n") + '\\.ssh\\authorized_keys'
+
+        cmd2 = 'powershell "cat %s"' % path
+        std_out, std_err, exit_code = remote_client.run_wsman_cmd(cmd2)
+
+        self.assertEqual(self.keypair['public_key'],
+                         std_out.replace('\r\n', '\n'))
+
     # TODO(trobert): redo
-    # def _check_userdata(self):
+    # def test_userdata(self):
     #     svr = self.instance
     #     cmd = 'powershell (Get-Item "~\\Documents\\*.txt").length'
     #
@@ -317,18 +362,3 @@ class TestServices(manager.ScenarioTest):
     #     LOG.debug(std_err)
     #     self.assertEqual(str(std_out), str(3))
 
-
-
-
-    # def _check_services(self):
-    #     self._test_services()
-    #     self._test_service_keys()
-    #     self._test_disk_expanded()
-    #     self._test_username_created()
-    #     self._test_hostname_set()
-    #     pdb.set_trace()
-    #     # self._test_ntp_service_running(ip_address)
-
-    # @services('compute', 'network')
-    # def test_check_services(self):
-    #     self._check_services()
