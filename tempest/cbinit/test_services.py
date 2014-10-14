@@ -95,18 +95,19 @@ class TestServices(manager.ScenarioTest):
         with open(CONF.compute.path_to_private_key, 'w') as h:
             h.write(cls.keypair['private_key'])
 
+        user_data = '/opt/stack/tempest/tempest/cbinit/resources/multipart_metadata'
+        with open(user_data, 'r') as h:
+            data = h.read()
+            encoded_data = base64.encodestring(data)
+
         cls.create_test_server(wait_until='ACTIVE',
-                               key_name=cls.keypair['name'])
+                               key_name=cls.keypair['name'],
+                               disk_config='AUTO',
+                               user_data=encoded_data)
         cls._assign_floating_ip()
 
     @classmethod
     def tearDownClass(cls):
-        # try:
-        #     cls.servers_client.remove_security_group(
-        #         cls.instance['id'], cls.security_group['name'])
-        # except Exception as ex:
-        #     LOG.info(ex)
-
         cls.servers_client.delete_server(cls.instance['id'])
         cls.servers_client.wait_for_server_termination(cls.instance['id'])
         cls.floating_ips_client.delete_floating_ip(cls.floating_ip['id'])
@@ -211,7 +212,6 @@ class TestServices(manager.ScenarioTest):
 
         return password
 
-    # TODO: do it with a flag to replace the code or not
     def _first_login(self, remote_client):
         if TestServices.first_login:
             TestServices.first_login = False
@@ -232,7 +232,21 @@ class TestServices(manager.ScenarioTest):
 
             #install cbinit
             cmd1 = "powershell Invoke-webrequest -uri 'https://raw.githubusercontent.com/trobert2/windows-openstack-imaging-tools/master/installCBinit.ps1' -outfile 'C:\\\\installcbinit.ps1'"
-            cmd2 = 'powershell "C:\\\\installcbinit.ps1"'
+
+            # REPLACE_CODE should be a $True or $False
+            # SERVICE_TYPE should be a value 'http', 'ec2', 'configdrive'
+            if os.environ['REPLACE_CODE'] not in ('$True', '$False'):
+                LOG.error('REPLACE_CODE not in ("$True", "$False")')
+
+            if os.environ['SERVICE_TYPE'] not in (
+                    'http', 'ec2', 'configdrive'):
+                LOG.error('SERVICE_TYPE not in ("http", "ec2", "configdrive")')
+
+            cmd2 = 'powershell "C:\\\\installcbinit.ps1 -newCode %s ' \
+                   '-serviceType %s"' % (os.environ['REPLACE_CODE'],
+                                         os.environ['SERVICE_TYPE'])
+
+            LOG.info('using %s' % cmd2)
 
             std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd1)
             LOG.info("downloading for cbinit: " + str(std_out))
@@ -281,7 +295,7 @@ class TestServices(manager.ScenarioTest):
         self.assertEqual(str(std_out), "Cloud Initialization Service\r\n")
 
     def test_disk_expanded(self):
-        # TODO: get the right image, not the first one
+        #TODO: after added image to instance creation, added here as well
         image = self.images_client.get_image(CONF.compute.image_ref)
         image_size = image[1]['OS-EXT-IMG-SIZE:size']
         cmd = 'powershell (Get-WmiObject "win32_logicaldisk | where -Property DeviceID -Match C:").Size'
@@ -351,14 +365,29 @@ class TestServices(manager.ScenarioTest):
         self.assertEqual(self.keypair['public_key'],
                          std_out.replace('\r\n', '\n'))
 
-    # TODO(trobert): redo
-    # def test_userdata(self):
-    #     svr = self.instance
-    #     cmd = 'powershell (Get-Item "~\\Documents\\*.txt").length'
-    #
-    #     ip_address = floating_ip.floating_ip_address
-    #     std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(cmd)
-    #     LOG.debug(str(std_out))
-    #     LOG.debug(std_err)
-    #     self.assertEqual(str(std_out), str(3))
+    def test_userdata_multipart(self):
+        password = self._get_password()
+        remote_client = WinRemoteClient(self.floating_ip['ip'],
+                                        self.created_user,
+                                        password)
 
+        cmd = 'powershell "(Get-ChildItem -Path  C:\ *.txt).Count'
+        std_out, std_err, exit_code = remote_client.run_wsman_cmd(cmd)
+
+        LOG.debug(str(std_out))
+        LOG.debug(std_err)
+
+        self.assertEqual(std_out.strip("\r\n"), str(4))
+
+    # TODO: get value to compare with
+    # net Win32_NetworkAdapterConfiguration
+    def _test_mtu(self):
+        cmd = '(Get-NetAdapterAdvancedProperty -Name Ethernet* | where ' \
+              '-Property DisplayName -contains "Jumbo Packet").RegistryValue'
+        std_out, std_err, exit_code = self.remote_client.run_wsman_cmd(cmd)
+
+        LOG.debug(str(std_out))
+        LOG.debug(std_err)
+
+        pdb.set_trace()
+        self.assertEqual(std_out, 123213214214)
