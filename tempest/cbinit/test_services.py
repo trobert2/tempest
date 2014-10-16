@@ -21,6 +21,7 @@ from tempest.openstack.common import log as logging
 from tempest.scenario import manager
 from tempest.scenario import utils as test_utils
 from tempest.common.utils.windows.remote_client import WinRemoteClient
+import re
 
 import base64
 import subprocess
@@ -89,6 +90,7 @@ class TestServices(manager.ScenarioTest):
         cls.default_ci_username = 'CiAdmin'
         cls.default_ci_password = 'Passw0rd'
         cls.created_user = 'Admin'
+        cls.dnsmasq_neutron_path = '/etc/neutron/dnsmasq-neutron.conf'
 
         (resp, cls.keypair) = cls.keypairs_client.create_keypair(
             cls.__name__ + "-key")
@@ -280,6 +282,15 @@ class TestServices(manager.ScenarioTest):
                 except:
                     time.sleep(5)
 
+    def _get_dhcp_value(self, key):
+        regexp = re.compile(r'dhcp-option-force.' + str(key) + ',')
+        f = open(self.dnsmasq_neutron_path, 'r')
+        for line in f:
+            re_se = regexp.search(line)
+            if re_se is not None:
+                return line[re_se.end():].strip('\n')
+
+
     def test_service_keys(self):
         key = 'HKLM:SOFTWARE\\Wow6432Node\\Cloudbase` Solutions\\Cloudbase-init\\' + self.instance['id'] + '\\Plugins'
         cmd = 'powershell (Get-Item %s).ValueCount' % key
@@ -323,8 +334,7 @@ class TestServices(manager.ScenarioTest):
         self.assertEqual(str(std_out).lower(),
                          str(svr['name'][:15]).lower() + '\r\n')
 
-    # TODO: fix the bug that does not set this service running
-    def _test_ntp_service_running(self):
+    def test_ntp_service_running(self):
         cmd = 'powershell (Get-Service "| where -Property Name '
         cmd += '-match W32Time").Status'
 
@@ -376,18 +386,19 @@ class TestServices(manager.ScenarioTest):
 
         LOG.debug(str(std_out))
         LOG.debug(std_err)
-
+        # pdb.set_trace()
         self.assertEqual(std_out.strip("\r\n"), str(4))
 
     # TODO: get value to compare with
     # net Win32_NetworkAdapterConfiguration
-    def _test_mtu(self):
-        cmd = '(Get-NetAdapterAdvancedProperty -Name Ethernet* | where ' \
-              '-Property DisplayName -contains "Jumbo Packet").RegistryValue'
+    def test_mtu(self):
+        cmd = 'powershell "(Get-NetIpConfiguration -Detailed).' \
+              'NetIPv4Interface.NlMTU"'
         std_out, std_err, exit_code = self.remote_client.run_wsman_cmd(cmd)
+
+        expected_mtu = self._get_dhcp_value('26')
 
         LOG.debug(str(std_out))
         LOG.debug(std_err)
 
-        pdb.set_trace()
-        self.assertEqual(std_out, 123213214214)
+        self.assertEqual(std_out.strip('\r\n'), expected_mtu)
