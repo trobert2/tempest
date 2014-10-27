@@ -1020,6 +1020,22 @@ NegativeGroup = [
                help="Test generator class for all negative tests"),
 ]
 
+cbinit_group = cfg.OptGroup(name='cbinit', title="Cloudbase-init Options")
+
+CBinitGroup = [
+    cfg.BoolOpt('replace_code',
+                default=False,
+                help="replace cbinit code, or use the one added by the "
+                     "installer"),
+    cfg.StrOpt('service_type',
+               default='http',
+               help="service_type should take value 'http', 'ec2', "
+                    "or 'configdrive'"),
+    cfg.StrOpt('userdata_path',
+               default='',
+               help="path to userdata to be used"),
+]
+
 
 def register_opts():
     register_opt_group(cfg.CONF, auth_group, AuthGroup)
@@ -1058,6 +1074,7 @@ def register_opts():
     register_opt_group(cfg.CONF, input_scenario_group, InputScenarioGroup)
     register_opt_group(cfg.CONF, cli_group, CLIGroup)
     register_opt_group(cfg.CONF, negative_group, NegativeGroup)
+    register_opt_group(cfg.CONF, cbinit_group, CBinitGroup)
 
 
 # this should never be called outside of this class

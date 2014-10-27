@@ -96,16 +96,17 @@ class TestServices(manager.ScenarioTest):
             cls.__name__ + "-key")
         with open(CONF.compute.path_to_private_key, 'w') as h:
             h.write(cls.keypair['private_key'])
+        metadata = {'network_config': str({'content_path':
+                                            'random_value_test_random'})}
 
-        user_data = '/opt/stack/tempest/tempest/cbinit/resources/multipart_metadata'
-        with open(user_data, 'r') as h:
+        with open(CONF.cbinit.userdata_path, 'r') as h:
             data = h.read()
             encoded_data = base64.encodestring(data)
 
         cls.create_test_server(wait_until='ACTIVE',
                                key_name=cls.keypair['name'],
                                disk_config='AUTO',
-                               user_data=encoded_data)
+                               user_data=encoded_data, meta=metadata)
         cls._assign_floating_ip()
 
     @classmethod
@@ -160,6 +161,7 @@ class TestServices(manager.ScenarioTest):
         self.remote_client = WinRemoteClient(self.floating_ip['ip'],
                                              self.default_ci_username,
                                              self.default_ci_password)
+        #pdb.set_trace()
         self._first_login(self.remote_client)
 
     def tearDown(self):
@@ -220,6 +222,7 @@ class TestServices(manager.ScenarioTest):
 
             wait_cmd = 'powershell "(Get-WmiObject Win32_Account | where -Property Name -contains CiAdmin).FullName"'
             #wait for boot completion
+            LOG.info('waiting for boot completion')
             wsmancmd = remote_client
 
             while True:
@@ -235,18 +238,9 @@ class TestServices(manager.ScenarioTest):
             #install cbinit
             cmd1 = "powershell Invoke-webrequest -uri 'https://raw.githubusercontent.com/trobert2/windows-openstack-imaging-tools/master/installCBinit.ps1' -outfile 'C:\\\\installcbinit.ps1'"
 
-            # REPLACE_CODE should be a $True or $False
-            # SERVICE_TYPE should be a value 'http', 'ec2', 'configdrive'
-            if os.environ['REPLACE_CODE'] not in ('$True', '$False'):
-                LOG.error('REPLACE_CODE not in ("$True", "$False")')
-
-            if os.environ['SERVICE_TYPE'] not in (
-                    'http', 'ec2', 'configdrive'):
-                LOG.error('SERVICE_TYPE not in ("http", "ec2", "configdrive")')
-
             cmd2 = 'powershell "C:\\\\installcbinit.ps1 -newCode %s ' \
-                   '-serviceType %s"' % (os.environ['REPLACE_CODE'],
-                                         os.environ['SERVICE_TYPE'])
+                   '-serviceType %s"' % (CONF.cbinit.replace_code,
+                                         CONF.cbinit.service_type)
 
             LOG.info('using %s' % cmd2)
 
@@ -262,16 +256,19 @@ class TestServices(manager.ScenarioTest):
                   'Solutions\\Cloudbase-init\\' + self.instance['id'] + '\\Plugins'
             wait_cmd = 'powershell (Get-Item %s).ValueCount' % key
 
+            LOG.info('waiting for server status SHUTOFF because of sysprep')
             self.servers_client.wait_for_server_status(
                 server_id=self.instance['id'], status='SHUTOFF',
                 extra_timeout=600)
 
             self.servers_client.start(self.instance['id'])
 
+            LOG.info('waiting for server status ACTIVE')
             self.servers_client.wait_for_server_status(
                 server_id=self.instance['id'], status='ACTIVE')
             #set so it does not execute before every test
 
+            LOG.info('waiting for server to be running')
             while True:
                 try:
                     std_out, std_err, exit_code = wsmancmd.run_wsman_cmd(wait_cmd)
@@ -283,13 +280,12 @@ class TestServices(manager.ScenarioTest):
                     time.sleep(5)
 
     def _get_dhcp_value(self, key):
-        regexp = re.compile(r'dhcp-option-force.' + str(key) + ',')
+        regexp = re.compile(r'dhcp-option-forceregex match substring in string python.' + str(key) + ',')
         f = open(self.dnsmasq_neutron_path, 'r')
         for line in f:
             re_se = regexp.search(line)
             if re_se is not None:
                 return line[re_se.end():].strip('\n')
-
 
     def test_service_keys(self):
         key = 'HKLM:SOFTWARE\\Wow6432Node\\Cloudbase` Solutions\\Cloudbase-init\\' + self.instance['id'] + '\\Plugins'
@@ -375,7 +371,7 @@ class TestServices(manager.ScenarioTest):
         self.assertEqual(self.keypair['public_key'],
                          std_out.replace('\r\n', '\n'))
 
-    def test_userdata_multipart(self):
+    def test_userdata(self):
         password = self._get_password()
         remote_client = WinRemoteClient(self.floating_ip['ip'],
                                         self.created_user,

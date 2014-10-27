@@ -319,6 +319,13 @@ class ScenarioTest(tempest.test.BaseTestCase):
                 'cidr': '0.0.0.0/0',
             },
             {
+                # http RDP
+                'ip_proto': 'tcp',
+                'from_port': 3389,
+                'to_port': 3389,
+                'cidr': '0.0.0.0/0',
+            },
+            {
                 # http winrm
                 'ip_proto': 'tcp',
                 'from_port': 5985,
